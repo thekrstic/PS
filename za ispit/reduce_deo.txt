@@ -1,0 +1,22 @@
+MaxRez localMaxRez;
+    localMaxRez.index = worldRank;
+    localMaxRez.value = (double)recvBuff[0];
+
+    for (int i = 1; i < m; i++)
+    {
+        if ((double)recvBuff[i] > localMaxRez.value)
+        {
+            localMaxRez.value = (double)recvBuff[i];
+        }
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Reduce(&localMaxRez, &writeInIndex, 1, MPI_DOUBLE_INT, MPI_MAXLOC, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&writeInIndex, 1, MPI_DOUBLE_INT, 0, MPI_COMM_WORLD);
+
+    // finalna redukcija
+    MPI_Reduce(&localM, &M, 1, MPI_DOUBLE, MPI_SUM, writeInIndex.index, MPI_COMM_WORLD);
+
+    if(worldRank == writeInIndex.index){
+        cout << "p: " << writeInIndex.index << ", test: " << writeInIndex.value << ", rez: " << M << endl;
+    }

@@ -1,0 +1,45 @@
+#include <string>
+#include "iostream"
+#include "mpi.h"
+
+#define n 4
+#define m 3
+
+int main(int argc, char** argv)
+{
+	int rank, cartrank, cartsize, size, dims[2] = { n, m }, K, periods[2] = { 0 , 0 }, reorder = 1, coords[2];
+
+
+	MPI_Init(&argc, &argv);
+	//MPI_Comm_size(MPI_COMM_WORLD, &size);
+	//MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	MPI_Comm cartComm, newComm;
+	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartComm);
+	MPI_Comm_size(cartComm, &cartsize);
+	MPI_Comm_rank(cartComm, &cartrank);
+
+	MPI_Cart_coords(cartComm, cartrank, 2, coords);
+	int color = coords[0] % 2, key = 1;
+	MPI_Comm_split(cartComm, color, key, &newComm);
+	MPI_Comm_size(newComm, &size);
+	MPI_Comm_rank(newComm, &rank);
+
+	K = rank * coords[1] + 2;
+
+	MPI_Bcast(&K, 1, MPI_INT, 0, newComm);
+
+	if (color == 1)
+	{
+		K += rank;
+	}
+	if (color == 0)
+	{
+		printf("K PRE izmene: %d, proces %d.\n", K, rank);
+		K += rank;
+		printf("K POSLE izmene: %d, proces %d.\n", K, rank);
+	}
+
+	MPI_Finalize();
+	return 0;
+}

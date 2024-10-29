@@ -1,0 +1,73 @@
+%%writefile vector_add.cu
+#include <iostream>
+
+__global__ void tr(int *A, int *T, int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    while(i < n && j < n)
+    {
+        T[j * n + i] = A[i * n + j];
+        i += blockDim.x * gridDim.x;
+        j += blockDim.y + gridDim.y;
+    }
+}
+
+int main(void) {
+
+    int n;
+    printf("Unesite dim matrice: ");
+    scanf("%d", &n);
+
+    int *A = new int[n * n];
+    int *T = new int[n * n];
+
+    for(int i = 0; i < n; i++)
+    {
+        for(int j = 0; j < n; j++)
+        {
+            A[i * n + j] = (i + 3) * j;
+        }
+    }
+
+    int *dev_A, *dev_T;
+    cudaMalloc((void**) &dev_A, n*n*sizeof(int));
+    cudaMalloc((void**) &dev_T, n*n*sizeof(int));
+
+    cudaMemcpy(dev_A, A, n*n*sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 blockSize(16, 16);
+    dim3 gridSize((n + blockSize.x - 1) / blockSize.x, (n + blockSize.y - 1) / blockSize.y);
+
+    tr<<<gridSize, blockSize>>>(dev_A, dev_T, n);
+
+    cudaMemcpy(T, dev_T, n*n*sizeof(int), cudaMemcpyDeviceToHost);
+
+    printf("Mat A: \n");
+    for(int i = 0; i < n; i++)
+    {
+        for(int j = 0; j < n; j++)
+        {
+            printf("%d ", A[i * n + j]);
+        }
+        printf("\n");
+    }
+    printf("\n\n");
+    printf("Mat T: \n");
+    for(int i = 0; i < n; i++)
+    {
+        for(int j = 0; j < n; j++)
+        {
+            printf("%d ", T[i * n + j]);
+        }
+        printf("\n");
+    }
+
+    delete[] A;
+    delete[] T;
+    cudaFree(dev_A);
+    cudaFree(dev_T);
+    return 0;
+}
+

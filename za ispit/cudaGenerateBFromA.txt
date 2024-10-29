@@ -1,0 +1,59 @@
+%%writefile vector_add.cu
+#include <math.h>
+#include <iostream>
+
+__global__ void generateB(int *A, int *B, int N)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if(i < N - 2)
+    {
+        B[i] = (A[i] * A[i+1] * A[i+2]) / (A[i] + A[i+1] + A[i+2]);
+    }
+}
+
+int main()
+{
+  int N;
+  printf("Unesi N: ");
+  scanf("%d", &N);
+
+  int *A = new int[N];
+  printf("A: ");
+  for(int i = 0; i < N; i++)
+  {
+    A[i] = i * 2 + 1;
+    printf("%d ", A[i]);
+  }
+  printf("\n");
+  int *B = new int[N-2];
+
+  int *dev_A, *dev_B;
+  cudaMalloc((void**)&dev_A, N * sizeof(int));
+  cudaMalloc((void**)&dev_B, (N - 2) * sizeof(int));
+
+  cudaMemcpy(dev_A, A, N * sizeof(int), cudaMemcpyHostToDevice);
+
+  int BlockSize = 256;
+  int GridSize = (BlockSize - 1 + N) / BlockSize;
+
+  generateB<<<GridSize, BlockSize>>>(dev_A, dev_B, N);
+
+  cudaMemcpy(B, dev_B, (N - 2) * sizeof(int), cudaMemcpyDeviceToHost);
+
+  printf("B: ");
+  for(int i = 0; i < N - 2; i++)
+  {
+    printf("%d ", B[i]);
+  }
+  printf("\n");
+
+
+  delete[] A;
+  delete[] B;
+  cudaFree(&dev_A);
+  cudaFree(&dev_B);
+
+  return 0;
+}
+

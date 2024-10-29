@@ -1,0 +1,80 @@
+#include <string>
+#include "iostream"
+#include "mpi.h"
+
+#define n 3
+
+int main(int argc, char** argv)
+{
+	int A[n][n], T[n][n], rank, size, disp1[n], block_len1[n], disp2[n], block_len2[n];
+	
+
+	MPI_Datatype low, high;
+	MPI_Status status;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	for (int i = 0; i < n; i++)
+	{
+		disp1[i] = i * n;
+		block_len1[i] = i + 1;
+
+		disp2[i] = (i * n) + i;
+		block_len2[i] = n - i;
+	}
+
+	MPI_Type_indexed(n, block_len1, disp1, MPI_INT, &low);
+	MPI_Type_indexed(n, block_len2, disp2, MPI_INT, &high);
+	MPI_Type_commit(&low);
+	MPI_Type_commit(&high);
+
+	if (rank == 0)
+	{
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < n; j++)
+			{
+				A[i][j] = (i + 1) * (j + 2);
+				printf("%d ", A[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n\n\n");
+
+		MPI_Send(&A, 1, low, 1, 0, MPI_COMM_WORLD);
+		MPI_Send(&A, 1, high, 1, 1, MPI_COMM_WORLD);
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+	if (rank == 1)
+	{
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < n; j++)
+			{
+				T[i][j] = 0;
+			}
+		}
+		MPI_Recv(&T, 1, low, 0, 0, MPI_COMM_WORLD, &status);
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < n; j++)
+			{
+				printf("%d ", T[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+		MPI_Recv(&T, 1, high, 0, 1, MPI_COMM_WORLD, &status);
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < n; j++)
+			{
+				printf("%d ", T[i][j]);
+			}
+			printf("\n");
+		}
+	}
+	MPI_Finalize();
+	return 0;
+}

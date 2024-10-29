@@ -1,0 +1,68 @@
+#include <string>
+#include "iostream"
+#include "mpi.h"
+
+#define n 4
+#define m 2
+
+int main(int argc, char** argv)
+{
+	int rank, size, cartRank, cartSize, dims[2] = { m, n }, periods[2] = { 0, 0 }, reorder = 1, coords[2];
+	int niz[3];
+
+	MPI_Init(&argc, &argv);
+	MPI_Datatype niz_type;
+	MPI_Comm cartComm, newComm;
+	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartComm);
+	MPI_Comm_size(cartComm, &cartSize);
+	MPI_Comm_rank(cartComm, &cartRank);
+
+	MPI_Cart_coords(cartComm, cartRank, 2, coords);
+
+	int color = coords[0] % 2;
+	int key = 1;
+
+	for (int i = 0; i < 3; i++)
+	{
+		niz[i] = coords[1] * 2 + coords[0];
+	}
+
+	MPI_Comm_split(cartComm, color, key, &newComm);
+
+	MPI_Type_vector(3, 1, 1, MPI_INT, &niz_type);
+	MPI_Type_commit(&niz_type);
+
+	if (color == 1)
+	{
+		printf("Pre slanja: ");
+		for (int i = 0; i < 3; i++)
+		{
+			printf("%d ", niz[i]);
+		}
+	}
+	printf("\n");
+
+	MPI_Bcast(&niz[0], 1, niz_type, 0, newComm);
+
+	int left, right;
+	MPI_Cart_shift(cartComm, 0, 1, &left, &right);
+
+	for (int i = 0; i < 3; i++)
+	{
+		if(left != -1)
+			niz[i] += left;
+	}
+
+	if (color == 1)
+	{
+		printf("Posle slanja: ");
+		for (int i = 0; i < 3; i++)
+		{
+			printf("%d ", niz[i]);
+		}
+		printf("\n\n");
+	}
+
+	MPI_Finalize();
+	return 0;
+}

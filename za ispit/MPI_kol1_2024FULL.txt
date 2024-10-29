@@ -1,0 +1,268 @@
+#include <string>
+#include "iostream"
+#include "mpi.h"
+
+#define n 2
+#define k 4
+#define m 4
+
+int main(int argc, char** argv)
+{
+	int rank, A[n][k], B[k][m], C[n][m], maxB = INT_MIN;
+	MPI_Datatype kolona, col;
+	int size;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	if (rank == 0)
+	{
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < k; j++)
+			{
+				A[i][j] = i + j * 3;
+				printf("%d ", A[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+		for (int i = 0; i < k; i++)
+		{
+			for (int j = 0; j < m; j++)
+			{
+				B[i][j] = (i + j) * 2;
+				if (B[i][j] > maxB)
+				{
+					maxB = B[i][j];
+				}
+				printf("%d ", B[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
+	MPI_Bcast(&maxB, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+	MPI_Type_vector(k * m / size, 1, size, MPI_INT, &kolona);
+	MPI_Type_commit(&kolona);
+	MPI_Type_create_resized(kolona, 0, 1 * sizeof(int), &col);
+	MPI_Type_commit(&col);
+	
+
+	int* locB = NULL;
+	int* locC = NULL;
+
+	// Alokacija memorije za locB
+	locB = (int*)malloc(k * m / size * sizeof(int));
+
+	// Alokacija memorije za locC
+	locC = (int*)malloc(n * m / size * sizeof(int));
+
+
+	MPI_Bcast(&A[0][0], n * k, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Scatter(&B[0][0], 1, col, &locB, k * m / size, MPI_INT, 0, MPI_COMM_WORLD);
+
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			locC[i * n + j] = 0;
+		}
+	}
+
+	printf("LOCAL C: \n");
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			for (int l = 0; l < k; l++)
+			{
+				locC[i * n + j] += A[i][l] * locB[l * k + j];
+			}
+		}
+	}
+
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			printf("%d ", locC[i * n + j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+
+	printf("PROCES %d\n", rank);
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < k; j++)
+		{
+			printf("%d ", A[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+	for (int i = 0; i < k; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			printf("%d ", locB[i * k + j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+	int el = INT_MIN;
+	for (int i = 0; i < k; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			if (locB[i * k + j] > el)
+			{
+				el = locB[i * k + j];
+			}
+		}
+	}
+
+	printf("proces %d, el=%d\n", rank, el);
+	MPI_Reduce(&locC, &C, n * m, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD); // treba da se spoje dva locC u C
+
+	if (el == maxB)
+	{
+
+		printf("REZULTAT U PROCESU %d\n", rank);
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < m; j++)
+			{
+				printf("%d ", C[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+
+	}
+
+
+	MPI_Finalize();
+	return 0;
+}
+
+//drugo resenje
+
+#include <string>
+#include "iostream"
+#include "mpi.h"
+
+#define n 4
+#define k 2
+#define m 4
+
+int main(int argc, char** argv)
+{
+	int A[n][k], B[k][m], C[n][m], rank, size;
+	MPI_Datatype kolona;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	if (rank == 0)
+	{
+		printf("A: \n");
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < k; j++)
+			{
+				A[i][j] = i + 3 * j;
+				printf("%d ", A[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\nB: \n");
+		for (int i = 0; i < k; i++)
+		{
+			for (int j = 0; j < m; j++)
+			{
+				B[i][j] = j + 2 * i;
+				printf("%d ", B[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
+
+	MPI_Bcast(&A[0][0], n * k, MPI_INT, 0, MPI_COMM_WORLD);
+
+	MPI_Type_vector(k, 1, m, MPI_INT, &kolona);
+	MPI_Type_create_resized(kolona, 0, 1 * sizeof(int), &kolona);
+	MPI_Type_commit(&kolona);
+
+	int* locB = NULL;
+	locB = (int*)malloc(k * m / size * sizeof(int));
+
+	MPI_Scatter(&B[0][0], m / size, kolona, locB, m / size * k, MPI_INT, 0, MPI_COMM_WORLD);
+
+	printf("\nlocB: %d\n", rank);
+	for (int i = 0; i < k; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			printf("%d ", locB[j * m / size + i]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+	//racunanje
+	int* locC = NULL;
+	locC = (int*)malloc(n * m / size * sizeof(int));
+
+	for (int i = 0; i < n; i++)
+		for (int j = 0; j < m / size; j++)
+			locC[i * n + j] = 0;
+
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			for (int q = 0; q < k; q++)
+			{
+				locC[i * n + j] += A[i][q] * locB[j * m / size + q];
+			}
+		}
+	}
+
+	printf("\nlocC: %d\n", rank);
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < m / size; j++)
+		{
+			printf("%d ", locC[i * n + j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+	MPI_Gather(locC, m / size, kolona, &C, m / size, kolona, 0, MPI_COMM_WORLD);
+
+	if (rank == 0)
+	{
+		printf("\nC:\n");
+		for (int i = 0; i < n; i++)
+		{
+			for (int j = 0; j < m; j++)
+			{
+				printf("%d ", C[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
+
+	MPI_Finalize();
+	return 0;
+}

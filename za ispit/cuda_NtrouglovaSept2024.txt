@@ -1,0 +1,130 @@
+%%writefile vector_add.cu
+#include <cuda_runtime.h>
+#include <math.h>
+#include <iostream>
+
+struct vektor
+{
+  int value, i;
+};
+
+__global__ void generateB(int *A, int *B, int N)
+{
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+  if(i < N)
+  {
+    if(A[i] <= A[i + N] && A[i] <= A[i + 2 * N])
+    {
+      B[i] = A[i];
+    }
+    else if(A[i + N] <= A[i] && A[i + N] <= A[i + 2 * N])
+    {
+      B[i] = A[i + N];
+    }
+    else if(A[i + 2 * N] <= A[i] && A[i + 2 * N] <= A[i + N])
+    {
+      B[i] = A[i + 2 * N];
+    }
+  }
+    
+}
+
+__global__ void findMaxInB(int *B, int *maxValue, int N)
+{
+    // Koristimo shared memory da nađemo maksimalnu vrednost unutar svakog bloka
+    __shared__ int sharedMax[256];
+
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+    // Inicijalizuj shared memoriju sa minimalnim vrednostima
+    if (i < N)
+    {
+        sharedMax[threadIdx.x] = B[i];
+    }
+    else
+    {
+        sharedMax[threadIdx.x] = INT_MIN; // Ako smo izvan granica, postavi na najmanju moguću vrednost
+    }
+    __syncthreads();
+
+    // Paralelna redukcija da pronađemo maksimum unutar bloka
+    for (int stride = blockDim.x / 2; stride > 0; stride /= 2)
+    {
+        if (threadIdx.x < stride)
+        {
+            sharedMax[threadIdx.x] = max(sharedMax[threadIdx.x], sharedMax[threadIdx.x + stride]);
+        }
+        __syncthreads();
+    }
+
+    // Prvi thread u bloku upisuje rezultat u globalnu memoriju
+    if (threadIdx.x == 0)
+    {
+        atomicMax(maxValue, sharedMax[0]);
+    }
+}
+
+
+int main()
+{
+  int N;
+  printf("Unesi N: ");
+  scanf("%d", &N);
+
+  int *h_A = new int[3 * N];
+  int *h_B = new int[N];
+
+  for(int i = 0; i < 3 * N; i++)
+  {
+    h_A[i] = rand() % 7 + 2;
+    printf("%d ", h_A[i]);
+  } 
+
+  printf("\n");
+
+  int *d_A, *d_B;
+
+  cudaMalloc((void**) &d_A, N * 3 * sizeof(int));
+  cudaMalloc((void**) &d_B, N * sizeof(int));
+
+  cudaMemcpy(d_A, h_A, N * 3 * sizeof(int), cudaMemcpyHostToDevice);
+
+  int blockSize = 256;
+  int gridSize = (N + blockSize - 1) / blockSize;
+  int max = 256;
+
+  gridSize = min(max, gridSize);
+
+  generateB<<<gridSize, blockSize>>>(d_A, d_B, N);
+
+  cudaMemcpy(h_B, d_B, N * sizeof(int), cudaMemcpyDeviceToHost);
+
+  for(int i = 0; i < N; i++)
+  {
+    printf("%d ", h_B[i]);
+  }
+
+  int *d_maxValue;
+  int h_maxValue = INT_MIN; // Početna vrednost
+
+  cudaMalloc((void**)&d_maxValue, sizeof(int));
+  cudaMemcpy(d_maxValue, &h_maxValue, sizeof(int), cudaMemcpyHostToDevice);
+
+  // Konfiguriši blokove i niti
+  findMaxInB<<<gridSize, blockSize>>>(d_B, d_maxValue, N);
+
+  // Kopiraj maksimalnu vrednost nazad na host
+  cudaMemcpy(&h_maxValue, d_maxValue, sizeof(int), cudaMemcpyDeviceToHost);
+
+  printf("\nNajveći broj u B je: %d\n", h_maxValue);
+
+  cudaFree(d_maxValue);
+
+
+  delete[] h_A;
+  delete[] h_B;
+  cudaFree(d_A);
+  cudaFree(d_B);
+  return 0;
+}

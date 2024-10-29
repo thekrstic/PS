@@ -1,0 +1,126 @@
+%%writefile vector_add.cu
+#include <math.h>
+#include <iostream>
+
+struct Points
+{
+  float x, y;
+};
+
+struct Distances
+{
+  float value, index;
+};
+
+#define SHMEM (1 << 5)
+
+__global__ void calculate(Points *niz, Distances *distances, int N, int pozicija)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if(i < N)
+    {
+        int dx = niz[i].x - niz[pozicija].x;
+        int dy = niz[i].y - niz[pozicija].y;
+        distances[i].value = sqrtf(dx * dx + dy * dy);
+        distances[i].index = i;
+    }
+}
+
+
+__global__ void findMin(Distances *distances, Distances *rezDistance, int N)
+{
+  __shared__ Distances mem[SHMEM];
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+  mem[threadIdx.x] = distances[i];
+  __syncthreads();
+
+  for(int s = blockDim.x / 2; s > 0; s >>= 1)
+  {
+    if(threadIdx.x < s)
+    {
+      int l = threadIdx.x;
+      int r = threadIdx.x + s;
+      if(mem[l].value < mem[r].value)
+      {
+        Distances tmp = mem[l];
+        mem[l] = mem[r];
+        mem[r] = tmp;
+      }
+    }
+    __syncthreads();
+  }
+  if(threadIdx.x == 0)
+  {
+    rezDistance[blockIdx.x] = mem[0];
+  }
+
+}
+
+int main(void) {
+
+    int N;
+    printf("Unesi vrednost za N: ");
+    scanf("%d", &N);
+    while(N < 10)
+    {
+      printf("OPEEEEET: ");
+      scanf("%d", &N);
+    }
+
+    Points* niz = (Points*)malloc(N * sizeof(Points));
+    Distances* distances = (Distances*)malloc(N * sizeof(Distances));
+    Distances* rezDistance = (Distances*)malloc(N * sizeof(Distances));
+    for(int i = 0; i < N; i++)
+    {
+        niz[i].x = rand() % N;
+        niz[i].y = rand() % N;
+        printf("%d. (%f, %f)\n", i, niz[i].x, niz[i].y);
+    }
+
+    int pozicija;
+    printf("izaberi tacku: ");
+    scanf("%d", &pozicija);
+
+    Points* dev_niz;
+    Distances* dev_distances;
+    Distances* dev_rezDistances;
+
+    cudaMalloc((void**)&dev_niz, N * sizeof(Points));
+    cudaMalloc((void**)&dev_distances, N * sizeof(Distances));
+    cudaMalloc((void**)&dev_rezDistances, N * sizeof(Distances));
+
+    cudaMemcpy(dev_niz, niz, N * sizeof(Points), cudaMemcpyHostToDevice);
+
+    int blockSize = 256;
+    int gridSize = (blockSize - 1 + N) / blockSize;
+
+    calculate<<<gridSize, blockSize>>>(dev_niz, dev_distances, N, pozicija);
+
+    int rez_index = 0;
+    for(int i = 0; i < 10; i++)
+    {
+      findMin<<<gridSize, blockSize>>>(dev_distances, dev_rezDistances, N);
+      findMin<<<1, blockSize>>>(dev_rezDistances, dev_rezDistances, N);
+      cudaMemcpy(rezDistance, dev_rezDistances, N * sizeof(Distances), cudaMemcpyDeviceToHost);
+
+
+      rez_index = rezDistance[0].index;
+      printf("%d - [%.2f]\n", rez_index, rezDistance[rez_index].value);
+
+      distances[rez_index].value = 0;
+      cudaMemcpy(dev_distances, distances, N * sizeof(Distances), cudaMemcpyHostToDevice);
+
+    }
+
+
+    delete[] niz;
+    delete[] distances;
+    delete[] rezDistance;
+    cudaFree(dev_niz);
+    cudaFree(dev_distances);
+    cudaFree(dev_rezDistances);
+    return 0;
+}
+

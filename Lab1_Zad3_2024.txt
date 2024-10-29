@@ -1,0 +1,49 @@
+#include <stdio.h>
+#include <mpi.h>
+#include <limits.h>
+#define n 16
+
+
+int main(int argc, char* argv[])
+{
+	int rank, size, buff, local;
+	int p1 = 25, p2 = 50, prijem1, prijem2;
+	MPI_Status status;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	if (rank == 0)
+	{
+		for (int i = 1; i < size; i++)
+		{
+			MPI_Send(&p1, 1, MPI_INT, i, 1, MPI_COMM_WORLD);
+			MPI_Send(&p2, 1, MPI_INT, i, 2, MPI_COMM_WORLD);
+		}
+	}
+
+	else
+	{
+		MPI_Recv(&prijem2, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
+		MPI_Recv(&prijem1, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+
+		printf("%d\n", prijem2);
+		printf("%d\n", prijem1);
+
+		buff = rank;
+		MPI_Send(&buff, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+	}
+
+	if (rank == 0)
+	{
+		for (int i = 1; i < size; i++)
+		{
+			MPI_Recv(&buff, 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
+			printf("proces %d\n", buff);
+		}
+	}
+
+	MPI_Finalize();
+	return 0;
+}

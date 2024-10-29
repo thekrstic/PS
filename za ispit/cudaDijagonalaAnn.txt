@@ -1,0 +1,58 @@
+%%writefile vector_add.cu
+#include <math.h>
+#include <iostream>
+
+__global__ void element(int *A, int N, int *el)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+
+    while(i < N && j < N && i == j)
+    {
+        if(A[i * N + j] < el[0])
+        {
+          el[0] = A[i * N + j];
+        }
+        i++; j++;
+    }
+}
+
+int main()
+{
+  int N;
+  printf("Unesi N: ");
+  scanf("%d", &N);
+
+  int *el = new int[1];
+  el[0] = INT_MAX;
+  int *A = new int[N * N];
+  for(int i = 0; i < N; i++)
+  {
+    for(int j = 0; j < N; j++)
+    {
+      A[i * N + j] = rand() % 11 + 2;
+      printf("%d ", A[i * N + j]);
+    }
+    printf("\n");
+  }
+
+  int *dev_A, *dev_el;
+  cudaMalloc((void**)&dev_A, N * N * sizeof(int));
+  cudaMalloc((void**)&dev_el, 1 * sizeof(int));
+
+  cudaMemcpy(dev_A, A, N * N * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(dev_el, el, 1 * sizeof(int), cudaMemcpyHostToDevice);
+
+  int BlockSize = 256;
+  int gridSize = (BlockSize - 1 + N * N) / BlockSize;
+
+  element<<<gridSize, BlockSize>>>(dev_A, N, dev_el);
+
+  cudaMemcpy(el, dev_el, 1 * sizeof(int), cudaMemcpyDeviceToHost);
+
+  printf("Min element: %d\n", el[0]);
+
+  cudaFree(&dev_A);
+  return 0;
+}
+

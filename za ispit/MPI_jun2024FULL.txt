@@ -1,0 +1,143 @@
+#include <string>
+#include "iostream"
+#include "mpi.h"
+
+#define r 2
+#define k 4
+#define m 3
+
+int main(int argc, char** argv)
+{
+	int rank, size, A[r][k], B[k][m], C[r][m], el = INT_MAX;
+	MPI_Datatype kolona, vrsta, col, row;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	if (rank == 0)
+	{
+		for(int i = 0;i<r;i++)
+		{
+			for (int j = 0; j < k; j++)
+			{
+				A[i][j] = i + j * 3;
+				printf("%d ", A[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+		for (int i = 0; i < k; i++)
+		{
+			for (int j = 0; j < m; j++)
+			{
+				B[i][j] = (i + j) * 2;
+				if (B[i][j] < el)
+				{
+					el = B[i][j];
+				}
+				printf("%d ", B[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
+	MPI_Bcast(&el, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+
+	MPI_Type_vector(r * k / size, 1, size, MPI_INT, &kolona);
+	MPI_Type_commit(&kolona);
+	MPI_Type_create_resized(kolona, 0, 1*sizeof(int), &col);
+	MPI_Type_commit(&col);
+
+	MPI_Type_vector(k / size, m, m * size, MPI_INT, &vrsta);
+	MPI_Type_commit(&vrsta);
+	MPI_Type_create_resized(vrsta, 0, m * sizeof(int), &row);
+	MPI_Type_commit(&row);
+
+	int locA[r][k/2], locB[k/2][m], locC[r][m]; // treba k / size
+
+	MPI_Scatter(&A[0][0], 1, col, &locA, r * k / size, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Scatter(&B[0][0], 1, row, &locB, m * k / size, MPI_INT, 0, MPI_COMM_WORLD);
+
+	int min = INT_MAX;
+	for (int i = 0; i < k/2; i++)
+	{
+		for (int j = 0; j < m; j++)
+		{
+			if (locB[i][j] < min)
+			{
+				min = locB[i][j];
+			}
+		}
+	}
+
+	for (int i = 0; i < r; i++)
+	{
+		for (int j = 0; j < m; j++)
+		{
+			locC[i][j] = 0;
+		}
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	for (int i = 0; i < r; i++)
+	{
+		for (int j = 0; j < m; j++)
+		{
+			for (int l = 0; l < k / 2; l++)
+			{
+				locC[i][j] += locA[i][l] * locB[l][j];
+			}
+		}
+	}
+
+
+	printf("PROCES %d\n", rank);
+	for (int i = 0; i < r; i++)
+	{
+		for (int j = 0; j < k/2; j++)
+		{
+			printf("%d ", locA[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+	for (int i = 0; i < k/2; i++)
+	{
+		for (int j = 0; j < m; j++)
+		{
+			printf("%d ", locB[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+	for (int i = 0; i < r; i++)
+	{
+		for (int j = 0; j < m; j++)
+		{
+			printf("%d ", locC[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+	MPI_Reduce(&locC, C, r * m, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+	if (min == el)
+	{
+		printf("REZULTAT U PROCESU %d: \n", rank);
+		for (int i = 0; i < r; i++)
+		{
+			for (int j = 0; j < m; j++)
+			{
+				printf("%d ", C[i][j]);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
+
+	MPI_Finalize();
+	return 0;
+}

@@ -1,0 +1,87 @@
+%%writefile kol2024.cu
+
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+#include <time.h>
+
+#define N 50
+
+struct Point {
+  int x;
+  int y;
+};
+
+__global__ void izracunajRastojanje(Point* points, float* distances, Point target)
+{
+  int idx = blockDim.x * blockIdx.x + threadIdx.x;
+
+  if(idx < N)
+  {
+    float dx = (float)(points[idx].x - target.x);
+    float dy = (float)(points[idx].y - target.y);
+    distances[idx] = sqrtf(dx * dx + dy * dy);
+  }
+}
+
+int main()
+{
+
+  Point* h_points = (Point*)malloc(N*sizeof(Point));
+  
+  srand(time(NULL));
+  for(int i=0;i<N;i++) {
+    h_points[i].x = rand() % 50;
+    h_points[i].y = rand() % 40;
+  }
+
+  float *h_distances = (float*)malloc(N*sizeof(float));
+
+  int pozicija = rand() % N;
+  Point target = h_points[pozicija];
+
+  int threadsPerBlock = 256;
+  int blocksPerGrid = (threadsPerBlock + N - 1) / threadsPerBlock;
+
+  float* d_distances;
+  Point* d_points;
+
+  cudaMalloc(&d_points,N*sizeof(Point));
+  cudaMalloc(&d_distances,N*sizeof(float));
+
+  cudaMemcpy(d_points,h_points,N*sizeof(Point),cudaMemcpyHostToDevice); // sve tacke
+
+  izracunajRastojanje<<<blocksPerGrid,threadsPerBlock>>>(d_points,d_distances,target);
+
+  cudaMemcpy(h_distances,d_distances,N*sizeof(float),cudaMemcpyDeviceToHost);
+
+  // racunanje 10 najblizih
+
+  int* indeksi = (int*)malloc(10*sizeof(int));
+
+  for(int i=0;i<10;i++)
+    indeksi[i] = i;
+
+  for(int i=0;i<N-1;i++)
+  {
+    for(int j=i+1;j<N;j++)
+    {
+      if(h_distances[j] < h_distances[i])
+        {
+          float tmp = h_distances[i];
+          h_distances[i] = h_distances[j];
+          h_distances[j] = tmp;
+        }
+    }
+  }
+
+  printf("Rastojanja: ");
+  for(int i=0;i<10;i++)
+    printf("%f ",h_distances[i]);
+  printf("\n");
+
+
+  
+
+  return 0;
+}

@@ -1,0 +1,126 @@
+%%writefile vector_add.cu
+#include <math.h>
+#include <iostream>
+
+#define SIZE (1 << 10)
+
+struct Kruznica
+{
+  float x;
+  float y;
+  float r;
+};
+
+struct Areas
+{
+  float value;
+  float index;
+};
+
+#define SHMEMSIZE (128 * sizeof(Areas))
+
+__global__ void calculateArea(Kruznica *kruznica, Areas *area, int SIZE)
+{
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+  if(i < SIZE)
+  {
+    area[i].value = kruznica[i].r * kruznica[i].r * math.PI;
+    area[i].index = i;
+  }
+}
+
+
+__global__ void findMin(Areas *area, Areas *rezArea)
+{
+  __shared__ Areas mem[SHMEMSIZE];
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+  mem[threadIdx.x] = area[i]; // svaka nit uzima 1 area-u???
+  __syncthreads();
+
+  for(int s = blockDim.x / 2; s > 0; s >>= 1)
+  {
+    if(threadIdx.x < s)
+    {
+      int left = threadIdx.x;
+      int right = threadIdx.x + s;
+
+      if(mem[left].area < mem[right].area)
+      {
+        Areas tmp = mem[left];
+        mem[left] = mem[right];
+        mem[right] = tmp;
+      }
+    }
+    __syncthreads();
+  }
+
+  if(threadIdx.x == 0)
+  {
+    rezArea[blockIdx.x] = mem[0];
+  }
+
+
+}
+
+
+int main()
+{
+    Kruznica *kruznica;
+    Areas *area;
+    Areas *rezArea;
+
+    Kruznica *dev_kruznica;
+    Areas *dev_area;
+    Areas *dev_rezArea;
+
+    kruznica = (Kruznica*)malloc(SIZE * sizeof(Kruznica));
+    area = (Areas*)malloc(SIZE * sizeof(Areas));
+    rezArea = (Areas*)malloc(SIZE * sizeof(Areas));
+
+    cudaMalloc((void**)&dev_kruznica, SIZE * sizeof(Kruznica));
+    cudaMalloc((void**)&dev_area, SIZE * sizeof(Areas));
+    cudaMalloc((void**)&dev_rezArea, SIZE * sizeof(Areas));
+
+    for(int i = 0; i < SIZE; i++)
+    {
+      kruznica[i].x = i;
+      kruznica[i].y = i;
+      kruznica[i].r = (i * 0.1) + 10;
+    }
+
+    cudaMemcpy(dev_kruznica, kruznica, SIZE * sizeof(Kruznica), cudaMemcpyHostToDevice);
+
+    int blockSize = 128;
+    int gridSize = (blockSize - 1 + SIZE) / blockSize;
+
+    calculateArea<<<gridSize, blockSize>>>(dev_kruznica, dev_area, SIZE);
+
+    cudaMemcpy(area, dev_area, SIZE * sizeof(Areas), cudaMemcpyDeviceToHost);
+
+
+    int rez_index = 0;
+    for(int i = 0; i < 10; i++)
+    {
+      findMin<<<gridSize, blockSize>>>(dev_area, dev_rezArea);
+      findMin<<<1, blockSize>>>(dev_rezArea, dev_rezArea);
+      cudaMemcpy(rezArea, dev_rezArea, SIZE * sizeof(Areas), cudaMemcpyDeviceToHost);
+
+      rez_index = rezArea[0].index;
+      printf("%d [%d] = x: %f, y: %d, r: %d.", i, rez_index, kruznica[rez_index].x, kruznica[rez_index].y, kruznica[rez_index].r);
+
+      area[rez_index].value = 0;
+      cudaMemcpy(dev_area, area, SIZE * sizeof(Areas), cudaMemcpyHostToDevice);
+    }
+
+    free(kruznica);
+    free(area);
+    free(rezArea);
+    cudaFree(dev_kruznica);
+    cudaFree(dev_area);
+    cudaFree(dev_rezArea);
+
+    cudaDeviceReset();
+    return 0;
+}
